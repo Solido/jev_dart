@@ -1,0 +1,342 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+
+import 'default_http_client.dart';
+import 'env.dart';
+import 'errors.dart';
+import 'logging.dart';
+import 'models.dart';
+import 'questions.dart';
+import 'retry.dart';
+import 'runtime.dart';
+import 'types.dart';
+import 'version.dart';
+
+/// Default API root.
+const kDefaultBaseUrl = 'https://api.typesafe.ai';
+
+/// Default System One model alias.
+const kDefaultModel = 'jev-latest';
+
+final _runtime = describeRuntime();
+
+/// Client for the TypeSafe AI API (Jev / System One).
+class TypeSafeClient {
+  TypeSafeClient({
+    String? apiKey,
+    String? baseUrl,
+    String? defaultModel,
+    LogLevel? logLevel,
+    TypeSafeLogger? logger,
+    RetryPolicy? retry,
+    Duration? timeout,
+    Map<String, String>? defaultHeaders,
+    bool allowBrowser = false,
+    http.Client? httpClient,
+    bool closeClient = false,
+  })  : _apiKey = resolveApiKey(apiKey) ??
+            (throw TypeSafeException(
+              'No API key was provided. Pass apiKey to TypeSafeClient or set '
+              '${Env.apiKey} or ${Env.apiKeyAlt}.',
+            )),
+        baseUrl = _stripTrailingSlashes(
+          fromCodeOrEnv(baseUrl, Env.baseUrl) ?? kDefaultBaseUrl,
+        ),
+        defaultModel =
+            fromCodeOrEnv(defaultModel, Env.defaultModel) ?? kDefaultModel,
+        logLevel = _resolveLogLevel(logLevel),
+        retry = _validatedRetry(retry),
+        timeout = timeout ?? defaultTimeout,
+        defaultHeaders = Map.unmodifiable(defaultHeaders ?? const {}),
+        _ownsClient = httpClient == null || closeClient,
+        httpClient = httpClient ?? createDefaultHttpClient() {
+    if (isBrowser && !allowBrowser) {
+      throw TypeSafeException(
+        'TypeSafeClient is running in a browser, which would expose your API '
+        'key. Call the API from a server instead, or pass allowBrowser: true '
+        'if you understand the risk.',
+      );
+    }
+    if (this.timeout <= Duration.zero) {
+      throw ArgumentError.value(this.timeout, 'timeout');
+    }
+    this.logger = withLevel(logger ?? const PrintLogger(), this.logLevel);
+    models = Models(this);
+  }
+
+  final String _apiKey;
+
+  /// API root without trailing slashes.
+  final String baseUrl;
+
+  /// Model used when a request omits `model`.
+  final String defaultModel;
+
+  final LogLevel logLevel;
+  late final TypeSafeLogger logger;
+  final RetryPolicy retry;
+  final Duration timeout;
+  final Map<String, String> defaultHeaders;
+  final http.Client httpClient;
+  final bool _ownsClient;
+
+  late final Models models;
+
+  int _requestCount = 0;
+
+  /// Answer named questions about text or structured state.
+  Future<SystemOneResult> systemOne({
+    required Object? state,
+    required Map<String, Question> questions,
+    String? model,
+    Duration? timeout,
+    RetryPolicy? retry,
+    Map<String, String>? headers,
+    Future<void>? cancellation,
+  }) async {
+    validateQuestions(questions);
+    final body = {
+      'state': state,
+      'questions': questionsToJson(questions),
+      'model': model ?? defaultModel,
+    };
+    final json = await send(
+      'POST',
+      '/v1/systemone',
+      body: body,
+      timeout: timeout,
+      retry: retry,
+      headers: headers,
+      cancellation: cancellation,
+    );
+    if (json is! Map) {
+      throw TypeSafeException('Unexpected systemOne response.');
+    }
+    return SystemOneResult.fromJson(Map<String, Object?>.from(json));
+  }
+
+  /// Low-level JSON request used by resources.
+  Future<Object?> send(
+    String method,
+    String path, {
+    Object? body,
+    Duration? timeout,
+    RetryPolicy? retry,
+    Map<String, String>? headers,
+    Future<void>? cancellation,
+  }) async {
+    final policy = retry ?? this.retry;
+    validateRetryPolicy(policy);
+    final attemptTimeout = timeout ?? this.timeout;
+    if (attemptTimeout <= Duration.zero) {
+      throw ArgumentError.value(attemptTimeout, 'timeout');
+    }
+    final tag = '#${++_requestCount} $method $path';
+    final url = Uri.parse('$baseUrl$path');
+    final merged = _mergeHeaders(defaultHeaders, headers ?? const {});
+    merged['Authorization'] = 'Bearer $_apiKey';
+    merged['Accept'] = 'application/json';
+    merged['User-Agent'] = 'jev_dart/$packageVersion';
+    merged['X-TypeSafe-SDK'] = 'jev_dart/$packageVersion';
+    merged['X-TypeSafe-Runtime'] = _runtime;
+    if (body != null) {
+      merged['Content-Type'] = 'application/json';
+    }
+
+    final encoded = body == null ? null : jsonEncode(body);
+
+    for (var attempt = 0;; attempt++) {
+      final retriesLeft = policy.maxRetries - attempt;
+      if (attempt > 0) {
+        merged['X-TypeSafe-Retry-Count'] = '$attempt';
+      }
+      logger.debug('$tag -> $url', {
+        'headers': redactHeaders(merged),
+        'body': body,
+      });
+
+      final started = DateTime.now();
+      http.Response response;
+      try {
+        response = await _attempt(
+          tag: tag,
+          url: url,
+          method: method,
+          headers: Map<String, String>.from(merged),
+          encoded: encoded,
+          timeout: attemptTimeout,
+          cancellation: cancellation,
+        );
+      } on ApiAbortException {
+        rethrow;
+      } on ApiTimeoutException catch (err) {
+        if (retriesLeft <= 0 || !policy.retryTimeouts) rethrow;
+        await _backOff(tag, attempt, retriesLeft, err.message, null, policy, cancellation);
+        continue;
+      } on ApiConnectionException catch (err) {
+        if (retriesLeft <= 0 || !policy.retryConnectionErrors) rethrow;
+        await _backOff(tag, attempt, retriesLeft, err.message, null, policy, cancellation);
+        continue;
+      }
+
+      final requestId = requestIdFrom(response);
+      final elapsed = DateTime.now().difference(started).inMilliseconds;
+      logger.info(
+        '$tag <- ${response.statusCode} in ${elapsed}ms'
+        '${requestId != null ? ' (request $requestId)' : ''}',
+      );
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final parsed = _parseBody(response);
+        logger.debug('$tag <- body', parsed);
+        return parsed;
+      }
+
+      final errorBody = _parseBody(response);
+      logger.debug('$tag <- error body', errorBody);
+      final error = ApiException.fromResponse(
+        response.statusCode,
+        errorBody,
+        response.headers,
+        requestId: requestId,
+      );
+      if (retriesLeft <= 0 || !isRetryableStatus(response.statusCode, policy)) {
+        throw error;
+      }
+      await _backOff(
+        tag,
+        attempt,
+        retriesLeft,
+        '${response.statusCode}',
+        response.headers,
+        policy,
+        cancellation,
+      );
+    }
+  }
+
+  Future<http.Response> _attempt({
+    required String tag,
+    required Uri url,
+    required String method,
+    required Map<String, String> headers,
+    required String? encoded,
+    required Duration timeout,
+    required Future<void>? cancellation,
+  }) async {
+    final started = DateTime.now();
+    String elapsed() =>
+        '${DateTime.now().difference(started).inMilliseconds}ms';
+
+    try {
+      final request = http.Request(method, url);
+      request.headers.addAll(headers);
+      if (encoded != null) request.body = encoded;
+
+      final future = httpClient.send(request).then(http.Response.fromStream);
+      final raced = cancellation == null
+          ? future
+          : Future.any([
+              future,
+              cancellation.then((_) => throw ApiAbortException()),
+            ]);
+
+      return await raced.timeout(
+        timeout,
+        onTimeout: () {
+          throw ApiTimeoutException(timeout);
+        },
+      );
+    } on ApiAbortException {
+      logger.info('$tag aborted by caller after ${elapsed()}');
+      rethrow;
+    } on ApiTimeoutException {
+      logger.info('$tag timed out after ${elapsed()}');
+      rethrow;
+    } on TimeoutException catch (err) {
+      logger.info('$tag timed out after ${elapsed()}');
+      throw ApiTimeoutException(timeout, cause: err);
+    } catch (err) {
+      if (err is ApiException || err is TypeSafeException) rethrow;
+      logger.info('$tag connection error after ${elapsed()}', err);
+      throw ApiConnectionException('Connection error: $err', err);
+    }
+  }
+
+  Future<void> _backOff(
+    String tag,
+    int attempt,
+    int retriesLeft,
+    String reason,
+    Map<String, String>? headers,
+    RetryPolicy policy,
+    Future<void>? cancellation,
+  ) async {
+    final delay = retryDelay(attempt, headers: headers, policy: policy);
+    final nth = attempt + 1;
+    final total = attempt + retriesLeft;
+    logger.info('$tag retrying in ${delay.inMilliseconds}ms (retry $nth/$total) after $reason');
+    try {
+      if (cancellation == null) {
+        await Future<void>.delayed(delay);
+        return;
+      }
+      await Future.any([
+        Future<void>.delayed(delay),
+        cancellation.then((_) => throw ApiAbortException()),
+      ]);
+    } on ApiAbortException {
+      logger.info('$tag aborted by caller while waiting to retry');
+      rethrow;
+    }
+  }
+
+  /// Close the underlying HTTP client if this instance created it.
+  void close() {
+    if (_ownsClient) httpClient.close();
+  }
+
+  static RetryPolicy _validatedRetry(RetryPolicy? retry) {
+    final policy = retry ?? defaultRetryPolicy;
+    validateRetryPolicy(policy);
+    return policy;
+  }
+
+  static LogLevel _resolveLogLevel(LogLevel? fromCode) {
+    if (fromCode != null) return fromCode;
+    final fromEnv = readEnv(Env.logLevel);
+    if (fromEnv != null) return parseLogLevel(fromEnv, Env.logLevel);
+    return defaultLogLevel;
+  }
+}
+
+String _stripTrailingSlashes(String url) =>
+    url.replaceFirst(RegExp(r'/+$'), '');
+
+Map<String, String> _mergeHeaders(
+  Map<String, String> a,
+  Map<String, String> b,
+) {
+  final entries = <String, MapEntry<String, String>>{};
+  void add(Map<String, String> source) {
+    for (final e in source.entries) {
+      entries[e.key.toLowerCase()] = e;
+    }
+  }
+
+  add(a);
+  add(b);
+  return {for (final e in entries.values) e.key: e.value};
+}
+
+Object? _parseBody(http.Response response) {
+  final text = response.body;
+  if (text.isEmpty) return null;
+  try {
+    return jsonDecode(text);
+  } on FormatException {
+    return text;
+  }
+}
