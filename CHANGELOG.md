@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Example: playground quickstart, JS SDK demo ticket, and a calm contrast case with checks.
+
 - Package name: `jev_dart`.
 
 - Initial Dart client for TypeSafe System One (`systemOne`, `models.list`).

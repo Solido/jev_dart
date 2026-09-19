@@ -13,7 +13,7 @@ dependencies:
   jev_dart: ^0.1.0
 ```
 
-Set `TYPESAFE_API_KEY` or `JEV_API_KEY` (also loaded from `.env` in tests), then:
+Set `TYPESAFE_API_KEY` or `JEV_API_KEY` (also loaded from `.env` in tests and the example), then:
 
 ```dart
 import 'package:jev_dart/jev_dart.dart';
@@ -61,5 +61,13 @@ Constructor values override environment variables, then SDK defaults.
 | `logLevel` | `TYPESAFE_LOG_LEVEL` | `warn` |
 | `timeout` | — | 10s per attempt |
 | `retry` | — | 2 retries, 408/429/5xx |
+
+## Example
+
+`example/main.dart` runs three live cases (TypeSafe [quickstart playground](https://docs.typesafe.ai/introduction/quickstart), the [JS SDK demo](https://github.com/typesafe-ai/typesafe-sdk-js/blob/main/examples/demo.ts), and a calm contrast ticket) and **checks** the answers (urgency high vs low, billing vs not sales, etc.):
+
+```sh
+dart run example/main.dart
+```
 
 Docs: [https://docs.typesafe.ai/](https://docs.typesafe.ai/)
