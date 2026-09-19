@@ -1,6 +1,6 @@
 /// Extended playground demo for [jev_dart].
 ///
-/// Cases come from the TypeSafe quickstart playground, the JS SDK demo, and a
+/// Cases come from the TypeSafe quickstart playground, the Dart SDK demo, and a
 /// contrast ticket so answers can be checked in code.
 ///
 /// ```sh
@@ -53,7 +53,7 @@ Future<void> _run(TypeSafeClient client) async {
   _check('at least one model', models.isNotEmpty);
 
   await _playgroundQuickstart(client);
-  await _jsSdkDemoTicket(client);
+  await _sdkDemoTicket(client);
   await _calmInvoiceContrast(client);
 
   stdout.writeln('\nAll playground checks passed.');
@@ -104,9 +104,9 @@ Future<void> _playgroundQuickstart(TypeSafeClient client) async {
   _check('urgency high (playground ~0.999)', urgent.noul >= 0.8);
 }
 
-/// JS SDK `examples/demo.ts`: double charge, structured state.
-Future<void> _jsSdkDemoTicket(TypeSafeClient client) async {
-  _heading('JS SDK demo — charged twice');
+/// Dart SDK : double charge, structured state.
+Future<void> _sdkDemoTicket(TypeSafeClient client) async {
+  _heading('Dart SDK demo — charged twice');
 
   final result = await client.systemOne(
     state: {
