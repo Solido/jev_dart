@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
 import 'default_http_client.dart';
 import 'env.dart';
 import 'errors.dart';
+import 'json_codec.dart';
 import 'logging.dart';
 import 'models.dart';
 import 'questions.dart';
@@ -63,6 +63,13 @@ class TypeSafeClient {
       throw ArgumentError.value(this.timeout, 'timeout');
     }
     this.logger = withLevel(logger ?? const PrintLogger(), this.logLevel);
+    final baseHeaders = _mergeHeaders(this.defaultHeaders, const {});
+    baseHeaders['Authorization'] = 'Bearer $_apiKey';
+    baseHeaders['Accept'] = 'application/json';
+    baseHeaders['User-Agent'] = 'jev_dart/$packageVersion';
+    baseHeaders['X-TypeSafe-SDK'] = 'jev_dart/$packageVersion';
+    baseHeaders['X-TypeSafe-Runtime'] = _runtime;
+    _baseHeaders = Map.unmodifiable(baseHeaders);
     models = Models(this);
   }
 
@@ -81,10 +88,16 @@ class TypeSafeClient {
   final Map<String, String> defaultHeaders;
   final http.Client httpClient;
   final bool _ownsClient;
+  late final Map<String, String> _baseHeaders;
 
   late final Models models;
 
   int _requestCount = 0;
+
+  bool get _debugEnabled => logLevel == LogLevel.debug;
+
+  bool get _infoEnabled =>
+      logLevel == LogLevel.debug || logLevel == LogLevel.info;
 
   /// Answer named questions about text or structured state.
   Future<SystemOneResult> systemOne({
@@ -114,7 +127,7 @@ class TypeSafeClient {
     if (json is! Map) {
       throw TypeSafeException('Unexpected systemOne response.');
     }
-    return SystemOneResult.fromJson(Map<String, Object?>.from(json));
+    return SystemOneResult.fromJson(json as Map<String, Object?>);
   }
 
   /// Low-level JSON request used by resources.
@@ -135,36 +148,47 @@ class TypeSafeClient {
     }
     final tag = '#${++_requestCount} $method $path';
     final url = Uri.parse('$baseUrl$path');
-    final merged = _mergeHeaders(defaultHeaders, headers ?? const {});
-    merged['Authorization'] = 'Bearer $_apiKey';
-    merged['Accept'] = 'application/json';
-    merged['User-Agent'] = 'jev_dart/$packageVersion';
-    merged['X-TypeSafe-SDK'] = 'jev_dart/$packageVersion';
-    merged['X-TypeSafe-Runtime'] = _runtime;
+    final merged = headers == null || headers.isEmpty
+        ? Map<String, String>.from(_baseHeaders)
+        : _mergeHeaders(_baseHeaders, headers);
+    if (headers != null && headers.isNotEmpty) {
+      // System headers are always authoritative, matching the previous merge
+      // order even when callers supply case variants of these names.
+      merged['Authorization'] = _baseHeaders['Authorization']!;
+      merged['Accept'] = _baseHeaders['Accept']!;
+      merged['User-Agent'] = _baseHeaders['User-Agent']!;
+      merged['X-TypeSafe-SDK'] = _baseHeaders['X-TypeSafe-SDK']!;
+      merged['X-TypeSafe-Runtime'] = _baseHeaders['X-TypeSafe-Runtime']!;
+    }
     if (body != null) {
       merged['Content-Type'] = 'application/json';
     }
 
-    final encoded = body == null ? null : jsonEncode(body);
+    // Encode directly to the bytes consumed by package:http. The old
+    // jsonEncode -> Request.body path created a JSON String and then encoded
+    // that same value to UTF-8 a second time for every attempt.
+    final encoded = body == null ? null : encodeJson(body);
 
     for (var attempt = 0;; attempt++) {
       final retriesLeft = policy.maxRetries - attempt;
       if (attempt > 0) {
         merged['X-TypeSafe-Retry-Count'] = '$attempt';
       }
-      logger.debug('$tag -> $url', {
-        'headers': redactHeaders(merged),
-        'body': body,
-      });
+      if (_debugEnabled) {
+        logger.debug('$tag -> $url', {
+          'headers': redactHeaders(merged),
+          'body': body,
+        });
+      }
 
-      final started = DateTime.now();
+      final started = _infoEnabled ? (Stopwatch()..start()) : null;
       http.Response response;
       try {
         response = await _attempt(
           tag: tag,
           url: url,
           method: method,
-          headers: Map<String, String>.from(merged),
+          headers: merged,
           encoded: encoded,
           timeout: attemptTimeout,
           cancellation: cancellation,
@@ -173,29 +197,32 @@ class TypeSafeClient {
         rethrow;
       } on ApiTimeoutException catch (err) {
         if (retriesLeft <= 0 || !policy.retryTimeouts) rethrow;
-        await _backOff(tag, attempt, retriesLeft, err.message, null, policy, cancellation);
+        await _backOff(
+            tag, attempt, retriesLeft, err.message, null, policy, cancellation);
         continue;
       } on ApiConnectionException catch (err) {
         if (retriesLeft <= 0 || !policy.retryConnectionErrors) rethrow;
-        await _backOff(tag, attempt, retriesLeft, err.message, null, policy, cancellation);
+        await _backOff(
+            tag, attempt, retriesLeft, err.message, null, policy, cancellation);
         continue;
       }
 
       final requestId = requestIdFrom(response);
-      final elapsed = DateTime.now().difference(started).inMilliseconds;
-      logger.info(
-        '$tag <- ${response.statusCode} in ${elapsed}ms'
-        '${requestId != null ? ' (request $requestId)' : ''}',
-      );
+      if (_infoEnabled) {
+        logger.info(
+          '$tag <- ${response.statusCode} in ${started!.elapsedMilliseconds}ms'
+          '${requestId != null ? ' (request $requestId)' : ''}',
+        );
+      }
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final parsed = _parseBody(response);
-        logger.debug('$tag <- body', parsed);
+        if (_debugEnabled) logger.debug('$tag <- body', parsed);
         return parsed;
       }
 
       final errorBody = _parseBody(response);
-      logger.debug('$tag <- error body', errorBody);
+      if (_debugEnabled) logger.debug('$tag <- error body', errorBody);
       final error = ApiException.fromResponse(
         response.statusCode,
         errorBody,
@@ -222,18 +249,17 @@ class TypeSafeClient {
     required Uri url,
     required String method,
     required Map<String, String> headers,
-    required String? encoded,
+    required List<int>? encoded,
     required Duration timeout,
     required Future<void>? cancellation,
   }) async {
-    final started = DateTime.now();
-    String elapsed() =>
-        '${DateTime.now().difference(started).inMilliseconds}ms';
+    final started = _infoEnabled ? (Stopwatch()..start()) : null;
+    String elapsed() => '${started?.elapsedMilliseconds ?? 0}ms';
 
     try {
       final request = http.Request(method, url);
       request.headers.addAll(headers);
-      if (encoded != null) request.body = encoded;
+      if (encoded != null) request.bodyBytes = encoded;
 
       final future = httpClient.send(request).then(http.Response.fromStream);
       final raced = cancellation == null
@@ -250,17 +276,21 @@ class TypeSafeClient {
         },
       );
     } on ApiAbortException {
-      logger.info('$tag aborted by caller after ${elapsed()}');
+      if (_infoEnabled) {
+        logger.info('$tag aborted by caller after ${elapsed()}');
+      }
       rethrow;
     } on ApiTimeoutException {
-      logger.info('$tag timed out after ${elapsed()}');
+      if (_infoEnabled) logger.info('$tag timed out after ${elapsed()}');
       rethrow;
     } on TimeoutException catch (err) {
-      logger.info('$tag timed out after ${elapsed()}');
+      if (_infoEnabled) logger.info('$tag timed out after ${elapsed()}');
       throw ApiTimeoutException(timeout, cause: err);
     } catch (err) {
       if (err is ApiException || err is TypeSafeException) rethrow;
-      logger.info('$tag connection error after ${elapsed()}', err);
+      if (_infoEnabled) {
+        logger.info('$tag connection error after ${elapsed()}', err);
+      }
       throw ApiConnectionException('Connection error: $err', err);
     }
   }
@@ -277,7 +307,8 @@ class TypeSafeClient {
     final delay = retryDelay(attempt, headers: headers, policy: policy);
     final nth = attempt + 1;
     final total = attempt + retriesLeft;
-    logger.info('$tag retrying in ${delay.inMilliseconds}ms (retry $nth/$total) after $reason');
+    logger.info(
+        '$tag retrying in ${delay.inMilliseconds}ms (retry $nth/$total) after $reason');
     try {
       if (cancellation == null) {
         await Future<void>.delayed(delay);
@@ -332,11 +363,5 @@ Map<String, String> _mergeHeaders(
 }
 
 Object? _parseBody(http.Response response) {
-  final text = response.body;
-  if (text.isEmpty) return null;
-  try {
-    return jsonDecode(text);
-  } on FormatException {
-    return text;
-  }
+  return decodeResponse(response);
 }

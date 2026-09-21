@@ -73,9 +73,7 @@ class ChoiceAnswer extends Answer {
     return ChoiceAnswer(
       choice: json['choice'] as String,
       confidence: (json['confidence'] as num).toDouble(),
-      probabilities: {
-        for (final e in probs.entries) e.key: (e.value as num).toDouble(),
-      },
+      probabilities: _doubleMap(probs),
     );
   }
 
@@ -101,10 +99,8 @@ class ScoreAnswer extends Answer {
     return ScoreAnswer(
       score: (json['score'] as num).toDouble(),
       confidence: (json['confidence'] as num).toDouble(),
-      legend: Map<String, Object?>.from(legendRaw),
-      probabilities: {
-        for (final e in probs.entries) e.key: (e.value as num).toDouble(),
-      },
+      legend: legendRaw,
+      probabilities: _doubleMap(probs),
     );
   }
 
@@ -131,9 +127,9 @@ class SystemOneResult {
       model: json['model'] as String,
       answers: {
         for (final e in raw.entries)
-          e.key: Answer.fromJson(Map<String, Object?>.from(e.value as Map)),
+          e.key: Answer.fromJson(e.value as Map<String, Object?>),
       },
-      usage: Usage.fromJson(Map<String, Object?>.from(json['usage'] as Map)),
+      usage: Usage.fromJson(json['usage'] as Map<String, Object?>),
     );
   }
 
@@ -150,6 +146,16 @@ class SystemOneResult {
     if (a == null) throw StateError('No answer named "$name"');
     return a;
   }
+}
+
+Map<String, double> _doubleMap(Map<String, Object?> source) {
+  if (source.isEmpty) return const {};
+  if (source.values.every((value) => value is double)) {
+    return source.cast<String, double>();
+  }
+  return {
+    for (final e in source.entries) e.key: (e.value as num).toDouble(),
+  };
 }
 
 /// Metadata for an available model.

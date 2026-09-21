@@ -30,7 +30,7 @@ class Models {
       );
     }
     return (json['models'] as List)
-        .map((e) => ModelCard.fromJson(Map<String, Object?>.from(e as Map)))
+        .map((e) => ModelCard.fromJson(e as Map<String, Object?>))
         .toList();
   }
 }
