@@ -2,7 +2,7 @@ name: jev_dart
 description: >
   Dart client for TypeSafe AI (Jev / System One). Send state and typed
   questions; get structured answers. Pure Dart — works in CLI, server, and Flutter.
-version: 0.1.2
+version: 0.1.4
 homepage: https://github.com/Solido/jev_dart
 repository: https://github.com/Solido/jev_dart
 issue_tracker: https://github.com/Solido/jev_dart/issues

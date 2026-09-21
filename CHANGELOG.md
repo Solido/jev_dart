@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.2 - 2026-09-21
+## 0.1.4 - 2026-09-21
 
 - Major serialization and memory-path optimization for request/response throughput.
 - Native VM/mobile/desktop requests now encode directly to UTF-8 bytes with Crimson,
@@ -14,7 +14,7 @@
 - Kept a `JsonUtf8Encoder` fallback for values that expose `toJson()` and for Web.
 - Documented the valid-JSON API contract required by the native fast decoder.
 
-## 0.1.2
+## 0.1.1
 
 - Dart analysis fix
 
