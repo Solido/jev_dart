@@ -165,9 +165,9 @@ class InternalServerException extends ApiException {
 
 class ApiConnectionException extends TypeSafeException {
   ApiConnectionException([
-    String message = 'Connection error.',
+    super.message = 'Connection error.',
     Object? cause,
-  ]) : super(message, cause: cause);
+  ]) : super(cause: cause);
 }
 
 class ApiTimeoutException extends ApiConnectionException {
@@ -182,9 +182,9 @@ class ApiTimeoutException extends ApiConnectionException {
 
 class ApiAbortException extends TypeSafeException {
   ApiAbortException([
-    String message = 'Request was aborted.',
+    super.message = 'Request was aborted.',
     Object? cause,
-  ]) : super(message, cause: cause);
+  ]) : super(cause: cause);
 }
 
 String? extractMessage(Object? body) {

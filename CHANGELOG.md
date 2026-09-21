@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- Dart analysis fix
+
 ## 0.1.0
 
 - Example: playground quickstart, JS SDK demo ticket, and a calm contrast case with checks.
