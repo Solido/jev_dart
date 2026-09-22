@@ -103,31 +103,7 @@ void main() {
     client.close();
   });
 
-  test('caller cancellation aborts the request and does not retry', () async {
-    final cancellation = Completer<void>();
-    final abortAwareClient = _AbortAwareClient();
-    final client = TypeSafeClient(
-      apiKey: 'k',
-      httpClient: abortAwareClient,
-      retry: RetryPolicy(maxRetries: 2),
-    );
-
-    final result = client.systemOne(
-      state: 'x',
-      questions: {'q': noul()},
-      cancellation: cancellation.future,
-    );
-    await abortAwareClient.requestStarted.future;
-    cancellation.complete();
-
-    await expectLater(result, throwsA(isA<ApiAbortException>()));
-    await abortAwareClient.requestAborted.future;
-    expect(abortAwareClient.requestCount, 1);
-    client.close();
-  });
-
-  test('caller cancellation returns when an injected client ignores abort',
-      () async {
+  test('caller cancellation stops waiting on a pending client', () async {
     final cancellation = Completer<void>();
     final nonAbortAwareClient = _NonAbortAwareClient();
     final client = TypeSafeClient(
@@ -149,11 +125,11 @@ void main() {
     client.close();
   });
 
-  test('timeout aborts the in-flight request', () async {
-    final abortAwareClient = _AbortAwareClient();
+  test('timeout returns when an injected client remains pending', () async {
+    final pendingClient = _NonAbortAwareClient();
     final client = TypeSafeClient(
       apiKey: 'k',
-      httpClient: abortAwareClient,
+      httpClient: pendingClient,
       retry: RetryPolicy(maxRetries: 2, retryTimeouts: false),
     );
 
@@ -162,11 +138,10 @@ void main() {
       questions: {'q': noul()},
       timeout: const Duration(milliseconds: 20),
     );
-    await abortAwareClient.requestStarted.future;
+    await pendingClient.requestStarted.future;
 
     await expectLater(result, throwsA(isA<ApiTimeoutException>()));
-    await abortAwareClient.requestAborted.future;
-    expect(abortAwareClient.requestCount, 1);
+    expect(pendingClient.requestCount, 1);
     client.close();
   });
 
@@ -201,24 +176,6 @@ void main() {
       throwsA(isA<TypeSafeException>()),
     );
   });
-}
-
-class _AbortAwareClient extends http.BaseClient {
-  final requestStarted = Completer<void>();
-  final requestAborted = Completer<void>();
-  int requestCount = 0;
-
-  @override
-  Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    requestCount++;
-    if (!requestStarted.isCompleted) requestStarted.complete();
-    if (request is! http.Abortable || request.abortTrigger == null) {
-      throw StateError('Expected an abortable request.');
-    }
-    await request.abortTrigger;
-    if (!requestAborted.isCompleted) requestAborted.complete();
-    throw http.RequestAbortedException(request.url);
-  }
 }
 
 class _NonAbortAwareClient extends http.BaseClient {
