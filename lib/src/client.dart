@@ -255,9 +255,21 @@ class TypeSafeClient {
   }) async {
     final started = _infoEnabled ? (Stopwatch()..start()) : null;
     String elapsed() => '${started?.elapsedMilliseconds ?? 0}ms';
+    final abortTrigger = Completer<void>();
+    _AttemptAbortReason? abortReason;
+
+    void abort(_AttemptAbortReason reason) {
+      if (abortReason != null) return;
+      abortReason = reason;
+      abortTrigger.complete();
+    }
 
     try {
-      final request = http.Request(method, url);
+      final request = http.AbortableRequest(
+        method,
+        url,
+        abortTrigger: abortTrigger.future,
+      );
       request.headers.addAll(headers);
       if (encoded != null) request.bodyBytes = encoded;
 
@@ -266,12 +278,16 @@ class TypeSafeClient {
           ? future
           : Future.any([
               future,
-              cancellation.then((_) => throw ApiAbortException()),
+              cancellation.then((_) {
+                abort(_AttemptAbortReason.caller);
+                throw ApiAbortException();
+              }),
             ]);
 
       return await raced.timeout(
         timeout,
         onTimeout: () {
+          abort(_AttemptAbortReason.timeout);
           throw ApiTimeoutException(timeout);
         },
       );
@@ -286,6 +302,21 @@ class TypeSafeClient {
     } on TimeoutException catch (err) {
       if (_infoEnabled) logger.info('$tag timed out after ${elapsed()}');
       throw ApiTimeoutException(timeout, cause: err);
+    } on http.RequestAbortedException catch (err) {
+      if (abortReason == _AttemptAbortReason.caller) {
+        if (_infoEnabled) {
+          logger.info('$tag aborted by caller after ${elapsed()}');
+        }
+        throw ApiAbortException('Request was aborted.', err);
+      }
+      if (abortReason == _AttemptAbortReason.timeout) {
+        if (_infoEnabled) logger.info('$tag timed out after ${elapsed()}');
+        throw ApiTimeoutException(timeout, cause: err);
+      }
+      if (_infoEnabled) {
+        logger.info('$tag connection error after ${elapsed()}', err);
+      }
+      throw ApiConnectionException('Connection error: $err', err);
     } catch (err) {
       if (err is ApiException || err is TypeSafeException) rethrow;
       if (_infoEnabled) {
@@ -342,6 +373,8 @@ class TypeSafeClient {
     return defaultLogLevel;
   }
 }
+
+enum _AttemptAbortReason { caller, timeout }
 
 String _stripTrailingSlashes(String url) =>
     url.replaceFirst(RegExp(r'/+$'), '');

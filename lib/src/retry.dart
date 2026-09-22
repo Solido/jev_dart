@@ -1,3 +1,5 @@
+import 'package:http_parser/http_parser.dart' show parseHttpDate;
+
 /// Retry configuration. Unset override fields inherit client / SDK defaults.
 class RetryPolicy {
   RetryPolicy({
@@ -81,7 +83,13 @@ Duration? parseRetryAfter(Map<String, String> headers, {DateTime? now}) {
     if (seconds < 0) return null;
     return Duration(milliseconds: (seconds * 1000).round());
   }
-  final date = DateTime.tryParse(raw);
+  DateTime? date;
+  try {
+    date = parseHttpDate(raw);
+  } on FormatException {
+    // Keep accepting ISO-8601 dates accepted by earlier SDK versions.
+    date = DateTime.tryParse(raw);
+  }
   if (date == null) return null;
   final delta = date.difference(now ?? DateTime.now());
   return delta.isNegative ? Duration.zero : delta;

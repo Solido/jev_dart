@@ -6,6 +6,12 @@ Send **state** and typed **questions** (`noul`, `choice`, `score`); get structur
 
 This is a **pure Dart** package (no Flutter dependency). Use it from a CLI, a server, or a Flutter app via `import 'package:jev_dart/jev_dart.dart'`.
 
+![Jev turns unstructured state into typed probabilistic decisions that software can act on](screenshots/jev_dart-overview.png)
+
+**Speed and memory use are core design priorities—and a key differentiator of this implementation.** The request path is built to avoid unnecessary work and short-lived copies, while keeping connections reusable. That means less client-side encoding and decoding overhead on each call, without changing the typed API.
+
+![Snake](screenshots/snake_demo.png)
+
 ## Install
 
 ```yaml
@@ -35,29 +41,24 @@ void main() async {
 }
 ```
 
+## Performance and memory
+
+The hot path is designed to reduce both latency and transient memory use:
+
+- **Reuse the connection.** One long-lived HTTP client lets the transport reuse its keep-alive connection instead of creating a new client for every request. Close the `TypeSafeClient` when you are done with it.
+- **Encode once, straight to bytes.** Request JSON is written directly as UTF-8 bytes, avoiding the intermediate JSON string and second UTF-8 encoding. The resulting bytes are also reused across retries, so retrying does not serialize the same payload again.
+- **Parse response bytes directly.** On VM, mobile, and desktop, UTF-8 JSON responses are read from their original bytes with Crimson, avoiding an intermediate response string on the normal JSON path.
+- **Keep a compatibility fallback.** Values that rely on `toJson()` use Dart's standard JSON encoder. Non-JSON responses and parser failures use the tolerant `dart:convert` path.
+
+These choices target the SDK work it can control; total request time still depends on the network and the API response. The package does not publish comparative benchmark numbers.
+
 ## HTTP transport
 
-- **VM / mobile / desktop:** default client is [`Http2Client`](https://pub.dev/packages/http2) (`http2: ^3.1.0`) — pooled HTTP/2 to `api.typesafe.ai`.
-- **Web:** `package:http` `Client` (HTTP/1.1). `http2` needs `dart:io`.
-- HTTP/2 only: if the host does not negotiate `h2`, inject HTTP/1.1 explicitly:
+- **VM / mobile / desktop:** the default `package:http` client reuses HTTP/1.1 keep-alive connections and supports aborting requests on timeout or caller cancellation.
+- **Web:** `package:http` uses the browser's HTTP transport and supports request cancellation.
+- You can inject another `http.Client`. Cancellation depends on that client's support for `AbortableRequest`; clients that ignore its abort trigger may continue the request in the background.
 
-```dart
-TypeSafeClient(httpClient: http.Client());
-```
-
-## JSON performance
-
-The client keeps one HTTP client alive so the VM transport can reuse its pooled
-HTTP/2 connection. Request payloads are written directly to UTF-8 bytes and
-JSON responses are decoded directly from response bytes with Crimson. Ordinary
-JSON values use its fast writer; values exposing only `toJson()` automatically
-fall back to Dart's standard encoder.
-
-On Web, the package uses the direct `JsonUtf8Encoder` and the standard decoder
-because Crimson's current VM-oriented implementation is not JavaScript-safe.
-On VM/mobile/desktop, the fast decoder assumes the server returned valid
-UTF-8 JSON, as required by the API contract. Non-JSON responses and decoder
-failures keep the tolerant `dart:convert` fallback.
+On Web, the package uses Dart's `JsonUtf8Encoder` and standard decoder because Crimson's current VM-oriented implementation is not JavaScript-safe.
 
 ## Flutter
 

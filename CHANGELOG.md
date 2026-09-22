@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.5 - 2026-09-23
+
+- Use the platform `package:http` client by default so caller cancellation and
+  request timeouts abort the transport. Injected clients that do not support
+  abortable requests may continue in the background.
+- Parse standard HTTP-date values in `Retry-After` headers, while retaining
+  support for ISO-8601 dates accepted by earlier versions.
+- Add `http_parser` as a direct dependency for HTTP-date parsing.
+- Add a package screenshot and a Snake example; expand the README with the
+  package overview and performance characteristics.
+
 ## 0.1.4 - 2026-09-21
 
 - Major serialization and memory-path optimization for request/response throughput.
