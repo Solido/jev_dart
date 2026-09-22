@@ -6,11 +6,11 @@ Send **state** and typed **questions** (`noul`, `choice`, `score`); get structur
 
 This is a **pure Dart** package (no Flutter dependency). Use it from a CLI, a server, or a Flutter app via `import 'package:jev_dart/jev_dart.dart'`.
 
-![Jev turns unstructured state into typed probabilistic decisions that software can act on](screenshots/jev_dart-overview.png)
+![Jev turns unstructured state into typed probabilistic decisions that software can act on](https://raw.githubusercontent.com/Solido/jev_dart/main/screenshots/jev_dart-overview.png)
 
 **Speed and memory use are core design priorities—and a key differentiator of this implementation.** The request path is built to avoid unnecessary work and short-lived copies, while keeping connections reusable. That means less client-side encoding and decoding overhead on each call, without changing the typed API.
 
-![Snake](screenshots/snake_demo.png)
+![Snake](https://raw.githubusercontent.com/Solido/jev_dart/main/screenshots/snake_demo.png)
 
 ## Install
 
