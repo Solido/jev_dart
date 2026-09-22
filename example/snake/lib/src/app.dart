@@ -41,7 +41,6 @@ final class _SnakeAppState extends State<SnakeApp> {
   int _generation = 0;
   Timer? _stepTimer;
   Timer? _roundTimer;
-  Completer<void>? _cancellation;
 
   @override
   void initState() {
@@ -52,7 +51,6 @@ final class _SnakeAppState extends State<SnakeApp> {
   void dispose() {
     _stepTimer?.cancel();
     _roundTimer?.cancel();
-    _cancelCurrentRequest();
     super.dispose();
   }
 
@@ -60,8 +58,6 @@ final class _SnakeAppState extends State<SnakeApp> {
     if (_busy || _paused || _quitting || !_game.alive || _game.won) return;
     _busy = true;
     final generation = _generation;
-    final cancellation = Completer<void>();
-    _cancellation = cancellation;
     if (rebuild && mounted) {
       setState(() {
         _status = 'ASKING JEV…';
@@ -71,20 +67,14 @@ final class _SnakeAppState extends State<SnakeApp> {
       _status = 'ASKING JEV…';
       _error = null;
     }
-    unawaited(_resolveDecision(generation, cancellation));
+    unawaited(_resolveDecision(generation));
   }
 
-  Future<void> _resolveDecision(
-    int generation,
-    Completer<void> cancellation,
-  ) async {
+  Future<void> _resolveDecision(int generation) async {
     try {
-      final decision = await component.decisions.decide(
-        _game,
-        cancellation: cancellation.future,
-      );
+      final decision = await component.decisions.decide(_game);
       if (!mounted || generation != _generation || _quitting) return;
-      _releaseRequest(cancellation);
+      _releaseRequest();
       setState(() {
         _decision = decision;
         _lastDecision = decision;
@@ -95,14 +85,14 @@ final class _SnakeAppState extends State<SnakeApp> {
       if (!_paused) _scheduleStep(decision);
     } catch (error) {
       if (!mounted || generation != _generation || _quitting) return;
-      _releaseRequest(cancellation);
+      _releaseRequest();
       setState(() {
         _error = error;
         _decision = null;
         _status = 'API ERROR · NO MOVE EXECUTED';
       });
     } finally {
-      _releaseRequest(cancellation);
+      _releaseRequest();
       if (mounted &&
           generation != _generation &&
           !_paused &&
@@ -114,9 +104,7 @@ final class _SnakeAppState extends State<SnakeApp> {
     }
   }
 
-  void _releaseRequest(Completer<void> cancellation) {
-    if (!identical(_cancellation, cancellation)) return;
-    _cancellation = null;
+  void _releaseRequest() {
     _busy = false;
   }
 
@@ -163,7 +151,6 @@ final class _SnakeAppState extends State<SnakeApp> {
     _stepTimer?.cancel();
     _roundTimer?.cancel();
     _generation++;
-    _cancelCurrentRequest();
     setState(() {
       _round++;
       _game = SnakeGame(seed: _baseSeed + _round - 1);
@@ -172,13 +159,6 @@ final class _SnakeAppState extends State<SnakeApp> {
       _status = _paused ? 'PAUSED' : 'ASKING JEV…';
     });
     if (!_paused && !_busy) _startDecision();
-  }
-
-  void _cancelCurrentRequest() {
-    final cancellation = _cancellation;
-    if (cancellation != null && !cancellation.isCompleted) {
-      cancellation.complete();
-    }
   }
 
   bool _handleKey(KeyboardEvent event) {
@@ -252,7 +232,6 @@ final class _SnakeAppState extends State<SnakeApp> {
     _generation++;
     _stepTimer?.cancel();
     _roundTimer?.cancel();
-    _cancelCurrentRequest();
     component.onQuit?.call();
   }
 

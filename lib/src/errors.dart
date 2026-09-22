@@ -182,7 +182,7 @@ class ApiTimeoutException extends ApiConnectionException {
 
 class ApiAbortException extends TypeSafeException {
   ApiAbortException([
-    super.message = 'Request was aborted.',
+    super.message = 'Request wait was aborted; the transport may continue.',
     Object? cause,
   ]) : super(cause: cause);
 }

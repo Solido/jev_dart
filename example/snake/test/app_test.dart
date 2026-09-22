@@ -11,10 +11,7 @@ final class _FakeDecisionProvider implements DecisionProvider {
   int calls = 0;
 
   @override
-  Future<SnakeDecision> decide(
-    SnakeGame game, {
-    Future<void>? cancellation,
-  }) {
+  Future<SnakeDecision> decide(SnakeGame game) {
     calls++;
     return respond(game, calls);
   }
