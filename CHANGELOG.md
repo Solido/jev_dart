@@ -2,9 +2,9 @@
 
 ## 0.1.5 - 2026-09-23
 
-- Use the platform `package:http` client by default so caller cancellation and
-  request timeouts abort the transport. Injected clients that do not support
-  abortable requests may continue in the background.
+- Keep pooled HTTP/2 as the native default for connection reuse and throughput.
+  Caller cancellation and timeouts stop waiting in the SDK, but do not abort a
+  request already sent on the HTTP/2 stream.
 - Parse standard HTTP-date values in `Retry-After` headers, while retaining
   support for ISO-8601 dates accepted by earlier versions.
 - Add `http_parser` as a direct dependency for HTTP-date parsing.

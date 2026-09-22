@@ -29,10 +29,7 @@ final class SnakeDecision {
 }
 
 abstract interface class DecisionProvider {
-  Future<SnakeDecision> decide(
-    SnakeGame game, {
-    Future<void>? cancellation,
-  });
+  Future<SnakeDecision> decide(SnakeGame game);
 }
 
 /// Uses Jev for the direction probabilities and keeps execution safety local.
@@ -43,10 +40,7 @@ final class JevDecisionProvider implements DecisionProvider {
   final String? model;
 
   @override
-  Future<SnakeDecision> decide(
-    SnakeGame game, {
-    Future<void>? cancellation,
-  }) async {
+  Future<SnakeDecision> decide(SnakeGame game) async {
     final started = Stopwatch()..start();
     final moves = game.moves();
     final safe = moves.where((move) => move.safe).toList();
@@ -78,7 +72,6 @@ final class JevDecisionProvider implements DecisionProvider {
         'food': noul('Is food reachable through empty cells?'),
       },
       model: model,
-      cancellation: cancellation,
     );
 
     final answer = result.choice('move');
