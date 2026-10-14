@@ -1,0 +1,25 @@
+name: SDK alignment
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: dart pub get
+      - run: dart analyze
+      - run: python3 tool/upstream_alignment.py --check
+      - run: npm install --prefix /tmp/js-contract --ignore-scripts --no-audit --no-fund @typesafe-ai/sdk@0.7.0
+      - run: node tool/js_contract.mjs /tmp/js-contract/node_modules/@typesafe-ai/sdk test/fixtures/js_0_7_0.json --check
+      - run: dart test --exclude-tags live
+      - run: dart compile js tool/web_contract.dart -o /tmp/jev-web.js
+      - run: node -e "globalThis.self=globalThis; require('/tmp/jev-web.js')"

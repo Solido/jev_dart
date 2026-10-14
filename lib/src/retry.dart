@@ -1,6 +1,6 @@
 import 'package:http_parser/http_parser.dart' show parseHttpDate;
 
-/// Retry configuration. Unset override fields inherit client / SDK defaults.
+/// Complete retry configuration. Use RetryOverrides for partial per-call changes.
 class RetryPolicy {
   RetryPolicy({
     this.maxRetries = 2,
@@ -12,7 +12,7 @@ class RetryPolicy {
     this.maxRetryAfter = const Duration(seconds: 60),
     this.retryConnectionErrors = true,
     this.retryTimeouts = true,
-  }) : httpStatuses = httpStatuses ?? defaultRetryStatuses;
+  }) : httpStatuses = Set.unmodifiable(httpStatuses ?? defaultRetryStatuses);
 
   final int maxRetries;
   final Duration backoffInitial;
@@ -125,7 +125,9 @@ void validateRetryPolicy(RetryPolicy policy) {
   if (policy.backoffMax.isNegative) {
     throw ArgumentError.value(policy.backoffMax, 'backoffMax');
   }
-  if (policy.backoffJitter < 0 || policy.backoffJitter > 1) {
+  if (!policy.backoffJitter.isFinite ||
+      policy.backoffJitter < 0 ||
+      policy.backoffJitter > 1) {
     throw ArgumentError.value(policy.backoffJitter, 'backoffJitter');
   }
   for (final status in policy.httpStatuses) {
@@ -136,4 +138,33 @@ void validateRetryPolicy(RetryPolicy policy) {
   if (policy.maxRetryAfter.isNegative) {
     throw ArgumentError.value(policy.maxRetryAfter, 'maxRetryAfter');
   }
+}
+
+/// Per-call partial overrides. Omitted fields inherit the client's policy.
+class RetryOverrides {
+  const RetryOverrides(
+      {this.maxRetries,
+      this.backoffInitial,
+      this.backoffMax,
+      this.backoffJitter,
+      this.httpStatuses,
+      this.respectRetryAfter,
+      this.maxRetryAfter,
+      this.retryConnectionErrors,
+      this.retryTimeouts});
+  final int? maxRetries;
+  final Duration? backoffInitial, backoffMax, maxRetryAfter;
+  final double? backoffJitter;
+  final Set<int>? httpStatuses;
+  final bool? respectRetryAfter, retryConnectionErrors, retryTimeouts;
+  RetryPolicy apply(RetryPolicy base) => base.copyWith(
+      maxRetries: maxRetries,
+      backoffInitial: backoffInitial,
+      backoffMax: backoffMax,
+      backoffJitter: backoffJitter,
+      httpStatuses: httpStatuses,
+      respectRetryAfter: respectRetryAfter,
+      maxRetryAfter: maxRetryAfter,
+      retryConnectionErrors: retryConnectionErrors,
+      retryTimeouts: retryTimeouts);
 }

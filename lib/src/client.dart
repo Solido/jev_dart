@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:http/http.dart' as http;
 
 import 'default_http_client.dart';
+import 'assets.dart';
+import 'compression.dart';
 import 'env.dart';
 import 'errors.dart';
 import 'json_codec.dart';
@@ -36,6 +38,8 @@ class TypeSafeClient {
     bool allowBrowser = false,
     http.Client? httpClient,
     bool closeClient = false,
+    this.compression = Compression.zstd,
+    this.assetEncoding = AssetEncoding.multipart,
   })  : _apiKey = resolveApiKey(apiKey) ??
             (throw TypeSafeException(
               'No API key was provided. Pass apiKey to TypeSafeClient or set '
@@ -73,6 +77,9 @@ class TypeSafeClient {
     models = Models(this);
   }
 
+  final Compression compression;
+  final AssetEncoding assetEncoding;
+
   final String _apiKey;
 
   /// API root without trailing slashes.
@@ -101,36 +108,63 @@ class TypeSafeClient {
 
   /// Answer named questions about text or structured state.
   ///
-  /// Caller cancellation stops waiting for the result; the transport may
-  /// continue processing a request that was already sent.
+  /// Caller cancellation signals abort-capable transports and stops waiting.
+  /// The default HTTP/2 transport may continue a request already sent.
   Future<SystemOneResult> systemOne({
     required Object? state,
     required Map<String, Question> questions,
     String? model,
+    Map<String, Image>? assets,
     Duration? timeout,
     RetryPolicy? retry,
+    RetryOverrides? retryOverrides,
+    Map<String, String>? headers,
+    Future<void>? cancellation,
+  }) async =>
+      (await systemOneWithResponse(
+              state: state,
+              questions: questions,
+              model: model,
+              assets: assets,
+              timeout: timeout,
+              retry: retry,
+              retryOverrides: retryOverrides,
+              headers: headers,
+              cancellation: cancellation))
+          .data;
+
+  /// Typed result and buffered HTTP response from one request and one parse.
+  Future<WithResponse<SystemOneResult>> systemOneWithResponse({
+    required Object? state,
+    required Map<String, Question> questions,
+    String? model,
+    Map<String, Image>? assets,
+    Duration? timeout,
+    RetryPolicy? retry,
+    RetryOverrides? retryOverrides,
     Map<String, String>? headers,
     Future<void>? cancellation,
   }) async {
+    if (state == null) throw TypeSafeException('State is required.');
     validateQuestions(questions);
-    final body = {
+    final body = await encodeAssetRequest({
       'state': state,
       'questions': questionsToJson(questions),
       'model': model ?? defaultModel,
-    };
-    final json = await send(
-      'POST',
-      '/v1/systemone',
-      body: body,
-      timeout: timeout,
-      retry: retry,
-      headers: headers,
-      cancellation: cancellation,
-    );
-    if (json is! Map) {
+    }, assets ?? const {}, assetEncoding);
+    final result = await sendWithResponse('POST', '/v1/systemone',
+        body: body,
+        timeout: timeout,
+        retry: retry,
+        retryOverrides: retryOverrides,
+        headers: headers,
+        cancellation: cancellation);
+    if (result.data is! Map<String, Object?>) {
       throw TypeSafeException('Unexpected systemOne response.');
     }
-    return SystemOneResult.fromJson(json as Map<String, Object?>);
+    return WithResponse(
+        SystemOneResult.fromJson(result.data as Map<String, Object?>),
+        result.response);
   }
 
   /// Low-level JSON request used by resources.
@@ -143,10 +177,34 @@ class TypeSafeClient {
     Object? body,
     Duration? timeout,
     RetryPolicy? retry,
+    RetryOverrides? retryOverrides,
+    Map<String, String>? headers,
+    Future<void>? cancellation,
+  }) async =>
+      (await sendWithResponse(method, path,
+              body: body,
+              timeout: timeout,
+              retry: retry,
+              retryOverrides: retryOverrides,
+              headers: headers,
+              cancellation: cancellation))
+          .data;
+
+  /// Low-level parsed result with buffered HTTP metadata. Non-2xx still throw.
+  Future<WithResponse<Object?>> sendWithResponse(
+    String method,
+    String path, {
+    Object? body,
+    Duration? timeout,
+    RetryPolicy? retry,
+    RetryOverrides? retryOverrides,
     Map<String, String>? headers,
     Future<void>? cancellation,
   }) async {
-    final policy = retry ?? this.retry;
+    if (retry != null && retryOverrides != null) {
+      throw ArgumentError('Use retry or retryOverrides, not both.');
+    }
+    final policy = retryOverrides?.apply(this.retry) ?? retry ?? this.retry;
     validateRetryPolicy(policy);
     final attemptTimeout = timeout ?? this.timeout;
     if (attemptTimeout <= Duration.zero) {
@@ -154,28 +212,53 @@ class TypeSafeClient {
     }
     final tag = '#${++_requestCount} $method $path';
     final url = Uri.parse('$baseUrl$path');
-    final merged = headers == null || headers.isEmpty
-        ? Map<String, String>.from(_baseHeaders)
-        : _mergeHeaders(_baseHeaders, headers);
-    if (headers != null && headers.isNotEmpty) {
-      // System headers are always authoritative, matching the previous merge
-      // order even when callers supply case variants of these names.
-      merged['Authorization'] = _baseHeaders['Authorization']!;
-      merged['Accept'] = _baseHeaders['Accept']!;
-      merged['User-Agent'] = _baseHeaders['User-Agent']!;
-      merged['X-TypeSafe-SDK'] = _baseHeaders['X-TypeSafe-SDK']!;
-      merged['X-TypeSafe-Runtime'] = _baseHeaders['X-TypeSafe-Runtime']!;
-    }
-    if (body != null) {
-      merged['Content-Type'] = 'application/json';
+    var aborted = false;
+    cancellation?.then((_) => aborted = true);
+    // Let an already-completed cancellation settle before preparing/sending.
+    await Future<void>.value();
+    void checkCancellation() {
+      if (aborted) throw ApiAbortException();
     }
 
-    // Encode directly to the bytes consumed by package:http. The old
-    // jsonEncode -> Request.body path created a JSON String and then encoded
-    // that same value to UTF-8 a second time for every attempt.
-    final encoded = body == null ? null : encodeJson(body);
+    checkCancellation();
+    final merged = _mergeHeaders(_baseHeaders, headers ?? const {});
+    const protected = {
+      'authorization',
+      'accept',
+      'user-agent',
+      'x-typesafe-sdk',
+      'x-typesafe-runtime',
+      'content-type',
+      'content-encoding',
+      'x-typesafe-retry-count'
+    };
+    merged.removeWhere((key, _) => protected.contains(key.toLowerCase()));
+    for (final e in _baseHeaders.entries) {
+      if (protected.contains(e.key.toLowerCase()) &&
+          !{'content-type', 'content-encoding', 'x-typesafe-retry-count'}
+              .contains(e.key.toLowerCase())) {
+        merged[e.key] = e.value;
+      }
+    }
+    List<int>? encoded;
+    if (body != null) {
+      encoded = body is EncodedBody ? body.bytes : encodeJson(body);
+      if (encoded.length > 32 * 1024 * 1024) {
+        throw TypeSafeException(
+            'Request body exceeds the API limit of 32 MiB.');
+      }
+      merged['Content-Type'] =
+          body is EncodedBody ? body.contentType : 'application/json';
+      if (compression == Compression.zstd &&
+          encoded.length >= minCompressedBodyBytes) {
+        encoded = compressRequest(encoded);
+        merged['Content-Encoding'] = 'zstd';
+      }
+    }
+    checkCancellation();
 
     for (var attempt = 0;; attempt++) {
+      checkCancellation();
       final retriesLeft = policy.maxRetries - attempt;
       if (attempt > 0) {
         merged['X-TypeSafe-Retry-Count'] = '$attempt';
@@ -183,7 +266,7 @@ class TypeSafeClient {
       if (_debugEnabled) {
         logger.debug('$tag -> $url', {
           'headers': redactHeaders(merged),
-          'body': body,
+          'body': body is EncodedBody ? body.payload : body,
         });
       }
 
@@ -224,7 +307,7 @@ class TypeSafeClient {
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final parsed = _parseBody(response);
         if (_debugEnabled) logger.debug('$tag <- body', parsed);
-        return parsed;
+        return WithResponse(parsed, response);
       }
 
       final errorBody = _parseBody(response);
@@ -262,8 +345,20 @@ class TypeSafeClient {
     final started = _infoEnabled ? (Stopwatch()..start()) : null;
     String elapsed() => '${started?.elapsedMilliseconds ?? 0}ms';
 
+    var cancelledByCaller = false;
+    final abort = Completer<void>();
+    void triggerAbort() {
+      if (!abort.isCompleted) abort.complete();
+    }
+
+    final timer = Timer(timeout, triggerAbort);
+    cancellation?.then((_) {
+      cancelledByCaller = true;
+      triggerAbort();
+    });
     try {
-      final request = http.Request(method, url);
+      final request =
+          http.AbortableRequest(method, url, abortTrigger: abort.future);
       request.headers.addAll(headers);
       if (encoded != null) request.bodyBytes = encoded;
 
@@ -279,6 +374,9 @@ class TypeSafeClient {
         timeout,
         onTimeout: () => throw ApiTimeoutException(timeout),
       );
+    } on http.RequestAbortedException {
+      if (cancelledByCaller) throw ApiAbortException();
+      throw ApiTimeoutException(timeout);
     } on ApiAbortException {
       if (_infoEnabled) {
         logger.info('$tag aborted by caller after ${elapsed()}');
@@ -296,6 +394,8 @@ class TypeSafeClient {
         logger.info('$tag connection error after ${elapsed()}', err);
       }
       throw ApiConnectionException('Connection error: $err', err);
+    } finally {
+      timer.cancel();
     }
   }
 
@@ -368,4 +468,12 @@ Map<String, String> _mergeHeaders(
 
 Object? _parseBody(http.Response response) {
   return decodeResponse(response);
+}
+
+/// Parsed data plus the buffered response; obtaining it performs no second call.
+class WithResponse<T> {
+  const WithResponse(this.data, this.response);
+  final T data;
+  final http.Response response;
+  String? get requestId => requestIdFrom(response);
 }

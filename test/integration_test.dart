@@ -31,7 +31,7 @@ void main() {
       expect(models, isNotEmpty);
       expect(models.any((m) => m.name.contains('jev')), isTrue);
     }, timeout: const Timeout(Duration(seconds: 60)));
-  }, skip: apiKey == null ? 'No API key in .env' : false);
+  }, tags: ['live'], skip: apiKey == null ? 'No API key in .env' : false);
 }
 
 Future<void> _runSystemOne(TypeSafeClient client) async {

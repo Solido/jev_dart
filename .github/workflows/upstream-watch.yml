@@ -1,0 +1,35 @@
+name: TypeSafe upstream watch
+on:
+  schedule:
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: typesafe-upstream-watch
+  cancel-in-progress: false
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: drift
+        run: python3 tool/upstream_alignment.py --watch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: upstream-report
+          path: upstream-report.md
+      - if: steps.drift.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          issue=$(gh issue list --state open --search '"TypeSafe SDK alignment" in:title' --json number,title --jq '.[] | select(.title == "TypeSafe SDK alignment") | .number' | head -n 1)
+          if [ -n "$issue" ]; then
+            gh issue edit "$issue" --body-file upstream-report.md
+          else
+            gh issue create --title 'TypeSafe SDK alignment' --body-file upstream-report.md
+          fi

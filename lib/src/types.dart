@@ -6,13 +6,13 @@ class Usage {
 
   factory Usage.fromJson(Map<String, Object?> json) {
     return Usage(
-      inputTokens: (json['input_tokens'] as num).toInt(),
-      outputTokens: (json['output_tokens'] as num).toInt(),
+      inputTokens: (json['input_tokens'] as num?)?.toInt(),
+      outputTokens: (json['output_tokens'] as num?)?.toInt(),
     );
   }
 
-  final int inputTokens;
-  final int outputTokens;
+  final int? inputTokens;
+  final int? outputTokens;
 }
 
 /// Answer for a named question.
@@ -27,8 +27,14 @@ sealed class Answer {
       'noul' => NoulAnswer.fromJson(json),
       'choice' => ChoiceAnswer.fromJson(json),
       'score' => ScoreAnswer.fromJson(json),
+      'box' => BoxAnswer.fromJson(json),
       _ => throw FormatException('Unknown answer type: $type'),
     };
+  }
+
+  BoxAnswer asBox() {
+    if (this is BoxAnswer) return this as BoxAnswer;
+    throw StateError('Expected box answer, got $type');
   }
 
   NoulAnswer asNoul() {
@@ -137,6 +143,8 @@ class SystemOneResult {
   final Map<String, Answer> answers;
   final Usage usage;
 
+  BoxAnswer box(String name) => _require(name).asBox();
+
   NoulAnswer noul(String name) => _require(name).asNoul();
   ChoiceAnswer choice(String name) => _require(name).asChoice();
   ScoreAnswer score(String name) => _require(name).asScore();
@@ -193,3 +201,30 @@ abstract interface class TypeSafeLogger {
 Map<String, Object?> questionsToJson(Map<String, Question> questions) => {
       for (final e in questions.entries) e.key: e.value.toJson(),
     };
+
+/// Edges as fractions of the image dimensions.
+class BoxCoordinates {
+  const BoxCoordinates(
+      {required this.top,
+      required this.bottom,
+      required this.left,
+      required this.right});
+  factory BoxCoordinates.fromJson(Map<String, Object?> json) => BoxCoordinates(
+      top: (json['top'] as num).toDouble(),
+      bottom: (json['bottom'] as num).toDouble(),
+      left: (json['left'] as num).toDouble(),
+      right: (json['right'] as num).toDouble());
+  final double top, bottom, left, right;
+}
+
+/// Experimental image localization answer.
+class BoxAnswer extends Answer {
+  const BoxAnswer({required this.box, required this.confidence});
+  factory BoxAnswer.fromJson(Map<String, Object?> json) => BoxAnswer(
+      box: BoxCoordinates.fromJson(json['box'] as Map<String, Object?>),
+      confidence: (json['confidence'] as num?)?.toDouble());
+  final BoxCoordinates box;
+  final double? confidence;
+  @override
+  String get type => 'box';
+}

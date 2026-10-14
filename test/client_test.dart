@@ -74,7 +74,7 @@ void main() {
     );
     final result = await client.systemOne(
       state: 'x',
-      questions: {'ok': noul()},
+      questions: {'ok': noul('yes?')},
     );
     expect(n, 2);
     expect(result.noul('ok').noul, 1.0);
@@ -97,7 +97,7 @@ void main() {
       retry: RetryPolicy(maxRetries: 0),
     );
     expect(
-      () => client.systemOne(state: 'x', questions: {'q': noul()}),
+      () => client.systemOne(state: 'x', questions: {'q': noul('yes?')}),
       throwsA(isA<AuthenticationException>()),
     );
     client.close();
@@ -114,7 +114,7 @@ void main() {
 
     final result = client.systemOne(
       state: 'x',
-      questions: {'q': noul()},
+      questions: {'q': noul('yes?')},
       cancellation: cancellation.future,
     );
     await nonAbortAwareClient.requestStarted.future;
@@ -135,7 +135,7 @@ void main() {
 
     final result = client.systemOne(
       state: 'x',
-      questions: {'q': noul()},
+      questions: {'q': noul('yes?')},
       timeout: const Duration(milliseconds: 20),
     );
     await pendingClient.requestStarted.future;

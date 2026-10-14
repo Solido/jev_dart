@@ -13,24 +13,41 @@ class Models {
   Future<List<ModelCard>> list({
     Duration? timeout,
     RetryPolicy? retry,
+    RetryOverrides? retryOverrides,
     Map<String, String>? headers,
     Future<void>? cancellation,
   }) async {
-    final json = await _client.send(
-      'GET',
-      '/v1/models',
-      timeout: timeout,
-      retry: retry,
-      headers: headers,
-      cancellation: cancellation,
-    );
+    return (await listWithResponse(
+            timeout: timeout,
+            retry: retry,
+            retryOverrides: retryOverrides,
+            headers: headers,
+            cancellation: cancellation))
+        .data;
+  }
+
+  /// Models and buffered HTTP metadata from the same request.
+  Future<WithResponse<List<ModelCard>>> listWithResponse({
+    Duration? timeout,
+    RetryPolicy? retry,
+    RetryOverrides? retryOverrides,
+    Map<String, String>? headers,
+    Future<void>? cancellation,
+  }) async {
+    final result = await _client.sendWithResponse('GET', '/v1/models',
+        timeout: timeout,
+        retry: retry,
+        retryOverrides: retryOverrides,
+        headers: headers,
+        cancellation: cancellation);
+    final json = result.data;
     if (json is! Map || json['models'] is! List) {
       throw TypeSafeException(
-        'Unexpected response shape from GET /v1/models; expected { models: [...] }.',
-      );
+          'Unexpected response shape from GET /v1/models; expected { models: [...] }.');
     }
-    return (json['models'] as List)
+    final cards = (json['models'] as List)
         .map((e) => ModelCard.fromJson(e as Map<String, Object?>))
         .toList();
+    return WithResponse(cards, result.response);
   }
 }

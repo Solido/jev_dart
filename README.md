@@ -1,12 +1,12 @@
 # jev_dart
 
-Dart client for [TypeSafe AI](https://typesafe.ai) — Jev, the System One model.
+Dart client for [TypeSafe AI](https://typesafe.ai) — Jev and all compatibles System One api.
 
-Send **state** and typed **questions** (`noul`, `choice`, `score`); get structured answers your code can branch on.
-
-This is a **pure Dart** package (no Flutter dependency). Use it from a CLI, a server, or a Flutter app via `import 'package:jev_dart/jev_dart.dart'`.
+[![pub package](https://img.shields.io/pub/v/jev_dart.svg)](https://pub.dev/packages/jev_dart)
 
 ![Jev turns unstructured state into typed probabilistic decisions that software can act on](https://raw.githubusercontent.com/Solido/jev_dart/main/screenshots/jev_dart-overview.png)
+
+This is a **pure Dart** package (no Flutter dependency). Use it from a CLI, a server, or a Flutter app via `import 'package:jev_dart/jev_dart.dart'`.
 
 **Speed and memory use are core design priorities—and a key differentiator of this implementation.** The request path is built to avoid unnecessary work and short-lived copies, while keeping connections reusable. That means less client-side encoding and decoding overhead on each call, without changing the typed API.
 
@@ -56,7 +56,7 @@ These choices target the SDK work it can control; total request time still depen
 
 - **VM / mobile / desktop:** default client is [`Http2Client`](https://pub.dev/packages/http2) (`http2: ^3.1.0`), with pooled HTTP/2 connections to `api.typesafe.ai`.
 - **Web:** `package:http` delegates to the browser's HTTP transport. `http2` requires `dart:io`.
-- Caller cancellation and timeouts stop waiting in the SDK; the SDK does not send an abort signal, so work already sent may continue in the background on either the default or an injected transport.
+- Caller cancellation and timeouts signal transports that support `AbortableRequest`. The current HTTP/2 default ignores the signal, so requests already sent may continue after the SDK stops waiting.
 
 On Web, the package uses Dart's `JsonUtf8Encoder` and standard decoder because Crimson's current VM-oriented implementation is not JavaScript-safe.
 
@@ -86,3 +86,71 @@ dart run example/main.dart
 ```
 
 Docs: [https://docs.typesafe.ai/](https://docs.typesafe.ai/)
+
+## Compatibility with the JavaScript SDK
+
+Dart **0.7.0** tracks [TypeSafe JS 0.7.0](https://github.com/typesafe-ai/typesafe-sdk-js/releases/tag/v0.7.0).
+See [COMPATIBILITY.md](COMPATIBILITY.md) for proven features and remaining differences.
+The same version number identifies the upstream target; the matrix records the scope.
+Native HTTP/2 remains the default. HTTP/1 is available by injecting `http.Client()`.
+
+### Migrating from 0.1.x
+
+- `Usage.inputTokens` and `outputTokens` are now `int?`. Handle missing counts as
+  unknown, rather than treating them as zero.
+- `systemOne` rejects null state, empty Choice criteria, and Noul questions that
+  have neither instructions nor a described outcome.
+- Request bodies of at least 1 KiB are compressed with pure Dart zstd on VM and
+  Web. Pass `compression: Compression.none` for a server that does not accept it.
+
+### Images and Box
+
+Images and Box are experimental upstream. Enable them explicitly and use a
+model that supports Box; the JS release recommends `jev-preview`.
+
+```dart
+final photo = image(pngBytes); // PNG/JPEG file bytes; IO callers can use File.readAsBytes.
+final result = await client.systemOne(
+  state: {'photo': photo},
+  questions: {'target': box('The dog in `photo`')},
+  model: 'jev-preview',
+  headers: {'TypeSafe-Danger-Zone-Images': 'true'},
+);
+print(result.box('target').box.left); // Fraction of image width.
+```
+
+Images may also appear in instructions and criteria. Compose text using
+`withAssets(['Compare ', photo, ' with ', other])` or `joinAssets([photo, other], ', ')`.
+For named references pass `assets: {'<photo>': photo}` and write `<photo>` in the
+content. Each image must be referenced. Multipart is the default; configure
+`assetEncoding: AssetEncoding.base64` to send JSON with base64 image data.
+`Image.fromBase64(text)` accepts file bytes without a `data:` prefix.
+
+### Response metadata and retry overrides
+
+`systemOneWithResponse` and `models.listWithResponse` return `WithResponse<T>`
+with `data`, a buffered `http.Response`, and `requestId`, without another call.
+HTTP errors still throw. This differs from JS `asResponse()`: the body is already
+buffered and parsed. Existing `systemOne` and `models.list` calls still return Futures.
+
+Use `retryOverrides: RetryOverrides(maxRetries: 1)` to inherit the other client
+settings. The existing `retry` parameter replaces the whole policy; do not pass both.
+
+Cancellation and timeouts signal an `AbortableRequest`. A supported injected
+transport can stop its stream. The current HTTP/2 default ignores that signal,
+so the SDK stops waiting while a request already sent may continue.
+
+### Verification and upstream tracking
+
+```sh
+python3 tool/upstream_alignment.py --check
+python3 tool/upstream_alignment.py --watch
+dart test --exclude-tags live
+dart run tool/qualify_api.dart /tmp/jev-api-qualification.json
+```
+
+The last command uses your configured API key and performs eight live scenarios,
+reporting HTTP/2 and HTTP/1 independently with no fallback. The committed
+[qualification report](compatibility/api-qualification.json) records the measured scope.
+The weekly GitHub workflow creates or updates one alignment issue when releases
+or API documentation change. It starts after this workflow is pushed to the default branch.

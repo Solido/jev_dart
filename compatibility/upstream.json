@@ -1,0 +1,144 @@
+{
+  "dart_version": "0.7.0",
+  "upstream": {
+    "repository": "typesafe-ai/typesafe-sdk-js",
+    "target_tag": "v0.7.0",
+    "target_commit": "b844cd1aca12855a5d24a2df52a1401c86e7d37a",
+    "last_reviewed_tag": "v0.7.0",
+    "fully_aligned_tag": null,
+    "reviewed_at": "2026-10-15"
+  },
+  "api": {
+    "route_version": "v1",
+    "documented_revision": null,
+    "contracts": [
+      {
+        "url": "https://docs.typesafe.ai/api.md",
+        "path": "compatibility/contracts/api.md",
+        "sha256": "37f0f3a41917e17592876f67848bd63329ba576081a89704f28210f0efc3c0f6"
+      },
+      {
+        "url": "https://docs.typesafe.ai/images.md",
+        "path": "compatibility/contracts/images.md",
+        "sha256": "9dfbc3387fb0730435331ef41271287f1d9720ce4f37e09cce25b3643c4901b8"
+      },
+      {
+        "url": "https://docs.typesafe.ai/primitives/box.md",
+        "path": "compatibility/contracts/primitives-box.md",
+        "sha256": "d75c3d1d52e913819140d17d9ca3a2fee15b9bea849ef66a96dbf08eefb59a95"
+      },
+      {
+        "url": "https://docs.typesafe.ai/models.md",
+        "path": "compatibility/contracts/models.md",
+        "sha256": "02b7682a7176d2d6649a2fa4588df45cbbaa3c3460f721828d632a7577e606df"
+      }
+    ],
+    "last_live_verified_at": "2026-10-14T22:38:33.598229Z",
+    "verified_model": "jev-1.13.0 (text), jev-1.14.0 (images/Box)",
+    "qualification_report": "compatibility/api-qualification.json",
+    "qualification_scope": "8 scenarios passed, HTTP/2 default and HTTP/1 injected; no fallback"
+  },
+  "overall_status": "partial",
+  "features": [
+    {
+      "id": "core",
+      "status": "aligned",
+      "test": "test/client_test.dart",
+      "note": "Noul, Choice, Score, models; JSON contract",
+      "source": "v0.7.0",
+      "proof_scope": "local_contract"
+    },
+    {
+      "id": "score-list",
+      "status": "aligned",
+      "test": "test/questions_test.dart",
+      "note": "Ordered rubric; Dart builder also rejects short lists",
+      "source": "v0.7.0",
+      "proof_scope": "local_contract"
+    },
+    {
+      "id": "usage-nullable",
+      "status": "aligned",
+      "test": "test/upstream_contract_test.dart",
+      "note": "Missing counts stay null",
+      "source": "v0.7.0",
+      "proof_scope": "local_contract"
+    },
+    {
+      "id": "validation",
+      "status": "aligned",
+      "test": "test/upstream_contract_test.dart",
+      "note": "State, Choice and Noul checked before network",
+      "source": "v0.7.0",
+      "proof_scope": "local_contract"
+    },
+    {
+      "id": "images",
+      "status": "aligned",
+      "test": "test/upstream_contract_test.dart",
+      "note": "Multipart, base64, recursive assets and text composition",
+      "source": "v0.7.0",
+      "proof_scope": "local_contract"
+    },
+    {
+      "id": "box",
+      "status": "aligned",
+      "test": "test/upstream_contract_test.dart",
+      "note": "Coordinates and nullable confidence",
+      "source": "v0.7.0",
+      "proof_scope": "local_contract"
+    },
+    {
+      "id": "compression",
+      "status": "intentional_divergence",
+      "test": "test/upstream_contract_test.dart",
+      "note": "Pure Dart zstd on VM/Web instead of Node runtime detection",
+      "source": "v0.7.0",
+      "proof_scope": "local_contract"
+    },
+    {
+      "id": "metadata",
+      "status": "partial",
+      "test": "test/upstream_contract_test.dart",
+      "note": "Buffered WithResponse; no unparsed asResponse equivalent",
+      "source": "v0.7.0",
+      "proof_scope": "local_contract"
+    },
+    {
+      "id": "retry-overrides",
+      "status": "aligned",
+      "test": "test/upstream_contract_test.dart",
+      "note": "RetryOverrides inherits client policy",
+      "source": "v0.7.0",
+      "proof_scope": "local_contract"
+    },
+    {
+      "id": "cancellation",
+      "status": "partial",
+      "test": "test/transport_test.dart",
+      "note": "AbortableRequest signalled; HTTP/2 client ignores abort trigger",
+      "source": "v0.7.0",
+      "proof_scope": "local_contract"
+    },
+    {
+      "id": "node-exports",
+      "status": "not_applicable",
+      "test": null,
+      "note": "Node minimum version and TS payload exports do not apply",
+      "source": "v0.7.0",
+      "proof_scope": null
+    }
+  ],
+  "validation": {
+    "date": "2026-10-15",
+    "sdk_tests_passed": 41,
+    "snake_tests_passed": 15,
+    "js_differential_cases": 4,
+    "js_version": "0.7.0",
+    "dart_sdk": "3.14.0-211.1.beta",
+    "web_scope": "dart2js output executed under Node with self=globalThis; mock transport",
+    "analysis": "no issues",
+    "runtime_reload": "repo-owned Dart VM reloadSources succeeded",
+    "evidence": "docs/validation.md"
+  }
+}

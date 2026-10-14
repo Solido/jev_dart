@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0 - 2026-10-15
+
+- Align the Dart version with TypeSafe JS 0.7.0.
+- Add experimental images/assets and Box questions, plus zstd compression.
+- Support nullable token usage, stronger validation, response metadata and partial retry overrides.
+- Signal cancellation to supported transports; keep HTTP/2 as the native default.
+- Add a compatibility matrix, JS contract fixtures and weekly upstream checks.
+
+
 ## 0.1.5 - 2026-09-23
 
 - Keep pooled HTTP/2 as the native default for connection reuse and throughput.

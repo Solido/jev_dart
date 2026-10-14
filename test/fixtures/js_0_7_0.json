@@ -1,0 +1,171 @@
+{
+  "upstream_version": "0.7.0",
+  "requests": {
+    "core": {
+      "payload": {
+        "state": {
+          "document": "ticket"
+        },
+        "questions": {
+          "yes": {
+            "type": "noul",
+            "instructions": "yes?"
+          },
+          "category": {
+            "type": "choice",
+            "instructions": "which?",
+            "criteria": {
+              "a": null,
+              "b": null
+            }
+          },
+          "rating": {
+            "type": "score",
+            "instructions": "rate",
+            "criteria": [
+              "low",
+              "high"
+            ]
+          }
+        },
+        "model": "jev-latest"
+      },
+      "parts": []
+    },
+    "named_image": {
+      "payload": {
+        "state": {
+          "photo": "<photo>"
+        },
+        "questions": {
+          "target": {
+            "type": "box",
+            "instructions": "target in <photo>"
+          }
+        },
+        "model": "jev-preview",
+        "assets": {
+          "<photo>": {
+            "type": "image",
+            "part": "asset-0"
+          }
+        }
+      },
+      "parts": [
+        {
+          "name": "asset-0",
+          "content_type": "image/png",
+          "data_base64": "iVBORw0KGgoBAgM="
+        }
+      ]
+    },
+    "inline_image": {
+      "payload": {
+        "state": {
+          "photos": [
+            "<image:auto0>"
+          ]
+        },
+        "questions": {
+          "yes": {
+            "type": "noul",
+            "instructions": "Does <image:auto0> show a dog?"
+          }
+        },
+        "model": "jev-latest",
+        "assets": {
+          "<image:auto0>": {
+            "type": "image",
+            "part": "asset-0"
+          }
+        }
+      },
+      "parts": [
+        {
+          "name": "asset-0",
+          "content_type": "image/png",
+          "data_base64": "iVBORw0KGgoBAgM="
+        }
+      ]
+    },
+    "joined_images": {
+      "payload": {
+        "state": "Compare <image:auto0> / <image:auto1>.",
+        "questions": {
+          "yes": {
+            "type": "noul",
+            "instructions": "same?"
+          }
+        },
+        "model": "jev-latest",
+        "assets": {
+          "<image:auto0>": {
+            "type": "image",
+            "part": "asset-0"
+          },
+          "<image:auto1>": {
+            "type": "image",
+            "part": "asset-1"
+          }
+        }
+      },
+      "parts": [
+        {
+          "name": "asset-0",
+          "content_type": "image/png",
+          "data_base64": "iVBORw0KGgoBAgM="
+        },
+        {
+          "name": "asset-1",
+          "content_type": "image/png",
+          "data_base64": "iVBORw0KGgoBAgM="
+        }
+      ]
+    }
+  },
+  "response": {
+    "model": "fixture-model",
+    "answers": {
+      "yes": {
+        "type": "noul",
+        "noul": 0.8
+      },
+      "category": {
+        "type": "choice",
+        "choice": "a",
+        "confidence": 0.9,
+        "probabilities": {
+          "a": 0.9,
+          "b": 0.1
+        }
+      },
+      "rating": {
+        "type": "score",
+        "score": 0.7,
+        "confidence": 0.8,
+        "legend": {
+          "0": "low",
+          "1": "high"
+        },
+        "probabilities": {
+          "0": 0.3,
+          "1": 0.7
+        }
+      },
+      "target": {
+        "type": "box",
+        "box": {
+          "top": 0.1,
+          "bottom": 0.8,
+          "left": 0.2,
+          "right": 0.7
+        },
+        "confidence": null
+      }
+    },
+    "usage": {
+      "input_tokens": null,
+      "output_tokens": null
+    }
+  }
+}

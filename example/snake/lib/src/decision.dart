@@ -24,8 +24,8 @@ final class SnakeDecision {
   final double deadEndRisk;
   final double foodReachable;
   final Duration inferenceTime;
-  final int inputTokens;
-  final int outputTokens;
+  final int? inputTokens;
+  final int? outputTokens;
 }
 
 abstract interface class DecisionProvider {

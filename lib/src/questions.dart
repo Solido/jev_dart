@@ -85,6 +85,16 @@ void validateQuestions(Map<String, Question> questions) {
     throw TypeSafeException('At least one question is required.');
   }
   questions.forEach((name, question) {
+    if (question is ChoiceQuestion && question.choiceCriteria.isEmpty) {
+      throw TypeSafeException(
+          'Choice question "$name" requires at least one label.');
+    }
+    if (question is NoulQuestion &&
+        question.instructions == null &&
+        !(question.noulCriteria?.values.any((v) => v != null) ?? false)) {
+      throw TypeSafeException(
+          'Noul question "$name" requires instructions or an outcome description.');
+    }
     if (question is! ScoreQuestion) return;
     if (question.scoreCriteria.length < 2) {
       throw TypeSafeException(
@@ -94,3 +104,14 @@ void validateQuestions(Map<String, Question> questions) {
     }
   });
 }
+
+/// Experimental localization question. Requires an image, the images opt-in
+/// header, and a model supporting Box (upstream recommends jev-preview).
+final class BoxQuestion extends Question {
+  const BoxQuestion({super.instructions});
+  @override
+  String get type => 'box';
+}
+
+BoxQuestion box([Object? instructions]) =>
+    BoxQuestion(instructions: instructions);

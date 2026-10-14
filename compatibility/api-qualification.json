@@ -1,0 +1,75 @@
+{
+  "date_utc": "2026-10-14T22:38:33.598229Z",
+  "dart_version": "0.7.0",
+  "upstream_tag": "v0.7.0",
+  "results": [
+    {
+      "transport": "http2-default",
+      "scenario": "models",
+      "models": [
+        "jev-latest",
+        "jev-preview"
+      ],
+      "status": "passed"
+    },
+    {
+      "transport": "http2-default",
+      "scenario": "text-score-zstd",
+      "model": "jev-1.13.0",
+      "request_id": "req_01a13c91353d714795b2a028ddaf905e",
+      "status_code": 200,
+      "status": "passed"
+    },
+    {
+      "transport": "http2-default",
+      "scenario": "image-box-multipart-zstd",
+      "model": "jev-1.14.0",
+      "request_id": "req_01a13c91362d7a8f8134eaf65d8df5c6",
+      "status_code": 200,
+      "status": "passed"
+    },
+    {
+      "transport": "http2-default",
+      "scenario": "image-base64",
+      "model": "jev-1.14.0",
+      "request_id": "req_01a13c9137bc7ddaa342698db7cadbee",
+      "status_code": 200,
+      "status": "passed"
+    },
+    {
+      "transport": "http1-injected",
+      "scenario": "models",
+      "models": [
+        "jev-latest",
+        "jev-preview"
+      ],
+      "status": "passed"
+    },
+    {
+      "transport": "http1-injected",
+      "scenario": "text-score-zstd",
+      "model": "jev-1.13.0",
+      "request_id": "req_01a13c913a237130a9d54a831499276d",
+      "status_code": 200,
+      "status": "passed"
+    },
+    {
+      "transport": "http1-injected",
+      "scenario": "image-box-multipart-zstd",
+      "model": "jev-1.14.0",
+      "request_id": "req_01a13c913af371ff95628e4e6b352369",
+      "status_code": 200,
+      "status": "passed"
+    },
+    {
+      "transport": "http1-injected",
+      "scenario": "image-base64",
+      "model": "jev-1.14.0",
+      "request_id": "req_01a13c913c00744481ec9c22214e5e80",
+      "status_code": 200,
+      "status": "passed"
+    }
+  ],
+  "tested_package_version": "0.3.0",
+  "note": "Qualification before the version-only rename to 0.7.0; no API behavior change."
+}
